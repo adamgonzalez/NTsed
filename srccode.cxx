@@ -16,13 +16,20 @@ extern "C" void NTsed(const RealArray& energyArray,
                         RealArray& fluxErrArray, 
                         const string& initString)
 {
-    fluxErrArray.resize(0);
-
-    // // Do the disc emission calculation
-    // calcNTsed(energyArray, params, fluxArray);
     using namespace std;
     fluxArray.resize(energyArray.size()-1);
+    fluxErrArray.resize(0);
     
+    // Read in the model parameters
+    Real mbh(pow(10., params[0]));
+    Real mdot(params[1]);
+    Real spin(params[2]);
+    Real rin(params[3]);
+    Real rout(params[4]);
+    Real incl(params[5]);
+    Real fcol(params[6]);
+    Real dist(params[9]);
+
     // Set up relevant physical constants
     const Real gc(6.6743015e-11);
     const Real msol(1.98847e30);
@@ -35,18 +42,8 @@ extern "C" void NTsed(const RealArray& energyArray,
     const Real pc(3.0856775814913673e16);
     const Real mp(1.67262192369e-27);
     const Real st(6.6524587321e-29);
-    
-    // Read in the model parameters
-    Real mbh(pow(10., params[0]));
-    Real mdot(params[1]);
-    Real spin(params[2]);
-    Real rin(params[3]);
-    Real rout(params[4]);
-    Real incl(params[5]);
-    Real fcol(params[6]);
-    Real dist(params[9]);
 
-    // Compute the ISCO
+    // Compute the innermost stable circular orbit (ISCO)
     Real spinsign(1.0);
     if (signbit(spin) == true)
     {
@@ -67,7 +64,7 @@ extern "C" void NTsed(const RealArray& energyArray,
     Real fG(1.-2.*pow(x0, -2.)+spin*pow(x0, -3.));
     Real eta(1.-pow(fC, -1./2.)*fG);
 
-    // Convert quantities into more useable values
+    // Convert quantities into more useful units
     mbh = mbh*msol;
     Real LEdd(4.*M_PI*gc*mbh*mp*cl/st);
     mdot = (mdot*LEdd)/(pow(cl, 2.)*eta);
@@ -80,14 +77,10 @@ extern "C" void NTsed(const RealArray& energyArray,
         rin = rms;
     }
 
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /////       FOR THE DISC
-    ////////////////////////////////////////////////////////////////////////////////
-    // Set up radial bins for the disc
-    Real rstart(log10(rin));
+    // Set up the radial bins
+    Real rstart(log10(rms));
     Real rstop(log10(rout));
-    size_t rnum(101);
+    size_t rnum(1001);  // 1000 radial bins offers about dr/r of ~1% for Rin = 1 and Rout = 1e5
     Real rstep((rstop-rstart)/(rnum-1));
     RealArray redges(rnum);
     for (size_t n = 0; n < rnum; ++n){
@@ -104,10 +97,37 @@ extern "C" void NTsed(const RealArray& energyArray,
 
     // Set up temperature profile and disc flux / luminosity
     RealArray tztr(rnum-1);
-    Real tmax(0.);
+    Real tmax(0.);    
 
-    // Perform the integration
-    for (size_t j = 0; j < rnum-1; ++j){
+    // Compute the luminosity of the hot corona following eqn 2 of Kubota & Done (2018)
+    // The hot corona is powered by the luminosity between the Rrms and Rin radii
+    Real Ldiss(0.);
+    int k = 0;
+    while (redges[k+1] <= rin)
+    {
+        // Temperature profile for a Novikov-Thorne disc emissivity using the notation of Page & Thorne (1974)
+        Real x(pow(rmidps[k], 1./2.));
+        Real x0(pow(rms, 1./2.));
+        Real x1(2.*cos((1./3.)*acos(spin)-M_PI/3.));
+        Real x2(2.*cos((1./3.)*acos(spin)+M_PI/3.));
+        Real x3(-2.*cos((1./3.)*acos(spin)));
+        Real prefactor1((3.*mdot*pow(cl, 6.))/(8.*M_PI*pow(gc, 2.)*pow(mbh, 2.)));
+        Real prefactor2(pow((pow(x, 7.)-3.*pow(x, 5.)+2.*spin*pow(x, 4.)), -1.));
+        Real bigterm1(((3.*pow((x1-spin), 2.))/(x1*(x1-x2)*(x1-x3))) * log((x-x1)/(x0-x1)));
+        Real bigterm2(((3.*pow((x2-spin), 2.))/(x2*(x2-x1)*(x2-x3))) * log((x-x2)/(x0-x2)));
+        Real bigterm3(((3.*pow((x3-spin), 2.))/(x3*(x3-x1)*(x3-x2))) * log((x-x3)/(x0-x3)));
+        Real fx(prefactor1*prefactor2*(x-x0-(3./2.)*spin*log(x/x0)-bigterm1-bigterm2-bigterm3));
+        Real t(pow(fx/sb, 1./4.));
+        tztr[k] = t;
+        Real r(rmidps[k]*rg);
+        Real dr(rdiff[k]*rg);
+        Ldiss += 2*sb*pow(tztr[k], 4.)*2.*M_PI*r*dr;
+
+        k++;
+    }
+
+    // Compute the accretion disc spectrum
+    for (size_t j = k; j < rnum-1; ++j){
         // Temperature profile for a Novikov-Thorne disc emissivity using the notation of Page & Thorne (1974)
         Real x(pow(rmidps[j], 1./2.));
         Real x0(pow(rms, 1./2.));
@@ -140,7 +160,6 @@ extern "C" void NTsed(const RealArray& energyArray,
         tztr[j] = t*ffcol;
         
         // Save the max disc temperature
-        // tmax = (tztr[j] > tmax) ? tztr[j] : tmax;
         if (tztr[j] > tmax)
         {
             tmax = tztr[j];
@@ -156,76 +175,11 @@ extern "C" void NTsed(const RealArray& energyArray,
         }
     }
 
-
-    // Do the redshifting calculation
+    // Account for redshift on the disc emission
     const RealArray z = {params[10]};
     zashift(energyArray, z, spectrumNumber, fluxArray, fluxErrArray, initString);
 
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /////       FOR THE CORONA
-    ////////////////////////////////////////////////////////////////////////////////
-    // Set up radial bins that dissipate energy for corona (Rrms -> Rin)
-    Real crstart(log10(rms));
-    Real crstop(log10(rin));
-    // size_t rnum(101);
-    Real crstep((crstop-crstart)/(rnum-1));
-    RealArray credges(rnum);
-    for (size_t n = 0; n < rnum; ++n){
-        credges[n] = pow(10., crstart + n*crstep);
-    }
-    // Compute each radial bin mid-point and dr w.r.t. next bin
-    RealArray crmidps(rnum-1);
-    RealArray crdiff(rnum-1);
-    for (size_t n = 0; n < rnum-1; ++n){
-        crmidps[n] = pow(10, ((log10(credges[n+1])+log10(credges[n]))/2.));
-        crdiff[n] = credges[n+1]-credges[n];
-    }
-    // Set up temperature profile and disc flux / luminosity
-    RealArray ctztr(rnum-1);
-    Real Ldiss(0.);
-    // Perform the integration
-    for (size_t j = 0; j < rnum-1; ++j){
-        // Temperature profile for a Novikov-Thorne disc emissivity using the notation of Page & Thorne (1974)
-        Real x(pow(crmidps[j], 1./2.));
-        Real x0(pow(rms, 1./2.));
-        Real x1(2.*cos((1./3.)*acos(spin)-M_PI/3.));
-        Real x2(2.*cos((1./3.)*acos(spin)+M_PI/3.));
-        Real x3(-2.*cos((1./3.)*acos(spin)));
-        Real prefactor1((3.*mdot*pow(cl, 6.))/(8.*M_PI*pow(gc, 2.)*pow(mbh, 2.)));
-        Real prefactor2(pow((pow(x, 7.)-3.*pow(x, 5.)+2.*spin*pow(x, 4.)), -1.));
-        Real bigterm1(((3.*pow((x1-spin), 2.))/(x1*(x1-x2)*(x1-x3))) * log((x-x1)/(x0-x1)));
-        Real bigterm2(((3.*pow((x2-spin), 2.))/(x2*(x2-x1)*(x2-x3))) * log((x-x2)/(x0-x2)));
-        Real bigterm3(((3.*pow((x3-spin), 2.))/(x3*(x3-x1)*(x3-x2))) * log((x-x3)/(x0-x3)));
-        Real fx(prefactor1*prefactor2*(x-x0-(3./2.)*spin*log(x/x0)-bigterm1-bigterm2-bigterm3));
-        Real t(pow(fx/sb, 1./4.));
-
-        // Compute Done et al. (2012) colour-temperature correction if fcol is -ve
-        // Real ffcol(fcol);
-        // if (fcol < 0.)
-        // {
-        //     if (t >= 1.e5)
-        //     {
-        //         ffcol = pow((72./(kbcgs*t/1.e3)), 1./9.);
-        //     } else if (t > 3.e4 && t < 1.e5)
-        //     {
-        //         ffcol = pow((t/3.e4), 0.82);
-        //     } else if (t <= 3.e4)
-        //     {
-        //         ffcol = 1.;
-        //     }
-        // } 
-        // ctztr[j] = t*ffcol;
-        ctztr[j] = t;
-
-        // Compute the spectrum emitted by the current annulus of the disc, summing
-        Real r(crmidps[j]*rg);
-        Real dr(crdiff[j]*rg);
-        Ldiss += 2*sb*pow(ctztr[j], 4.)*2.*M_PI*r*dr;
-    }
-
-
-    // Do the hot corona emission calculation
+    // Compute the hot corona emission using nthComp
     // ---> NOTE: z in nthcomp only controls energy shift, not flux
     // ---> NOTE: do not use zashift on nthcomp, use combination of 
     //      clumin and z(nthcomp) to achieve both energy and flux z
@@ -235,15 +189,12 @@ extern "C" void NTsed(const RealArray& energyArray,
     const RealArray hotpars = {params[7], params[8], tmax*kbcgs/1.e3, 0, params[10]};
     nthcomp(energyArray, hotpars, spectrumNumber, nthfluxArray, nthfluxErrArray, initString);
     
-    // set the nthcomp flux to the dissipated luminosity between Rrms and Rin
-    // Real nthlum(45.);
-    // Real nthflx( log10(pow(10., nthlum)/(4.*M_PI*(pow((1.+params[10])*(params[9]*1.e6*3.0856775814913673e16*1.e2), 2.)))) );
+    // Set the nthcomp flux to the dissipated luminosity between Rrms and Rin
     Real nthflx( log10((Ldiss*1.e7)/(4.*M_PI*(pow((1.+params[10])*(params[9]*1.e6*3.0856775814913673e16*1.e2), 2.)))) );
     const RealArray cflpars = {1.e-5, 1.e3, nthflx};
     cflux(energyArray, cflpars, spectrumNumber, nthfluxArray, nthfluxErrArray, initString);
     
-    // add the nthcomp component to the overall model
-    // fluxArray = nthfluxArray;
+    // Add the nthcomp component to the overall model
     for (size_t i = 0; i < fluxArray.size(); ++i){
         fluxArray[i] += nthfluxArray[i];
     }
