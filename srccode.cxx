@@ -9,6 +9,20 @@
 #include <cmath>
 
 
+// Set up relevant physical constants globally
+const Real gc(6.6743015e-11);
+const Real msol(1.98847e30);
+const Real hp(6.62607015e-34);
+const Real cl(2.99792458e8);
+const Real kb(1.380649e-23);
+const Real kbcgs(8.617333262e-5);
+const Real sb(5.670374419e-8);
+const Real ec(1.602176634e-19);
+const Real pc(3.0856775814913673e16);
+const Real mp(1.67262192369e-27);
+const Real st(6.6524587321e-29);
+
+
 extern "C" void NTsed(const RealArray& energyArray, 
                         const RealArray& params, 
                         int spectrumNumber, 
@@ -29,19 +43,6 @@ extern "C" void NTsed(const RealArray& energyArray,
     Real incl(params[5]);
     Real fcol(params[6]);
     Real dist(params[9]);
-
-    // Set up relevant physical constants
-    const Real gc(6.6743015e-11);
-    const Real msol(1.98847e30);
-    const Real hp(6.62607015e-34);
-    const Real cl(2.99792458e8);
-    const Real kb(1.380649e-23);
-    const Real kbcgs(8.617333262e-5);
-    const Real sb(5.670374419e-8);
-    const Real ec(1.602176634e-19);
-    const Real pc(3.0856775814913673e16);
-    const Real mp(1.67262192369e-27);
-    const Real st(6.6524587321e-29);
 
     // Compute the innermost stable circular orbit (ISCO)
     Real spinsign(1.0);
@@ -190,7 +191,7 @@ extern "C" void NTsed(const RealArray& energyArray,
     nthcomp(energyArray, hotpars, spectrumNumber, nthfluxArray, nthfluxErrArray, initString);
     
     // Set the nthcomp flux to the dissipated luminosity between Rrms and Rin
-    Real nthflx( log10((Ldiss*1.e7)/(4.*M_PI*(pow((1.+params[10])*(params[9]*1.e6*3.0856775814913673e16*1.e2), 2.)))) );
+    Real nthflx( log10((Ldiss*1.e7)/(4.*M_PI*(pow((1.+params[10])*(params[9]*1.e6*pc*1.e2), 2.)))) );
     const RealArray cflpars = {1.e-5, 1.e3, nthflx};
     cflux(energyArray, cflpars, spectrumNumber, nthfluxArray, nthfluxErrArray, initString);
     
