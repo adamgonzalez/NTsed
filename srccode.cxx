@@ -78,16 +78,52 @@ extern "C" void NTsed(const RealArray& energyArray,
         rin = rms;
     }
 
+    // // Set up the radial bins
+    // Real rstart(log10(rms));
+    // Real rstop(log10(rout));
+    // // size_t rnum(1001);  // 1000 radial bins offers about dr/r of ~1% for Rin = 1 and Rout = 1e5
+    // size_t rnum(static_cast<int>(floor(100.*(rstop-rstart))));  // this offers dr/r of ~2.3% for all combinations of Rin and Rout
+    // Real rstep((rstop-rstart)/(rnum-1));
+    // RealArray redges(rnum);
+    // for (size_t n = 0; n < rnum; ++n){
+    //     redges[n] = pow(10., rstart + n*rstep);
+    // }
+
+
+    // NEW METHOD OF DOING RADIAL BINS ////////////////////////////////////////
     // Set up the radial bins
     Real rstart(log10(rms));
+    Real rcor(log10(rin));
     Real rstop(log10(rout));
-    // size_t rnum(1001);  // 1000 radial bins offers about dr/r of ~1% for Rin = 1 and Rout = 1e5
-    size_t rnum(static_cast<int>(floor(100.*(rstop-rstart))));  // this offers dr/r of ~2.3% for all combinations of Rin and Rout
-    Real rstep((rstop-rstart)/(rnum-1));
-    RealArray redges(rnum);
-    for (size_t n = 0; n < rnum; ++n){
-        redges[n] = pow(10., rstart + n*rstep);
+
+    // inner zone
+    size_t rinnernum(static_cast<int>(floor(100.*(rcor-rstart))));
+    Real rinnerstep((rcor-rstart)/(rinnernum-1));
+    RealArray rinneredges(rinnernum);
+    for (size_t n = 0; n < rinnernum; ++n){
+        rinneredges[n] = pow(10., rstart + n*rinnerstep);
     }
+    
+    // outer zone
+    // size_t routernum(static_cast<int>(floor(100.*(rout-rcor*(rinneredges.at(rinneredges.size()-1)/rinneredges.at(rinneredges.size()-2))))));
+    size_t routernum(static_cast<int>(floor(100.*(rout-rcor*(rinneredges[(rinneredges.size()-1)]/rinneredges[(rinneredges.size()-2)])))));
+    Real routerstep((rstop-rcor)/(routernum-1));
+    RealArray routeredges(routernum);
+    for (size_t n = 0; n < routernum; ++n){
+        routeredges[n] = pow(10., rcor + n*routerstep);
+    }
+
+    // combine inner and outer zones
+    size_t rnum(rinnernum+routernum);
+    RealArray redges(rnum); // <<<--- FIX THIS TO APPEND rinneredges and
+    for (size_t n = 0; n < rinnernum; ++n){
+        redges[n] = rinneredges[n];
+    }
+    for (size_t n = 0; n < routernum; ++n){
+        redges[rinnernum+n] = routeredges[n];
+    }
+    ///////////////////////////////////////////////////////////////////////////
+
 
     // Compute each radial bin mid-point and dr w.r.t. next bin
     RealArray rmidps(rnum-1);
