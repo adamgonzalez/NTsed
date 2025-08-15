@@ -81,7 +81,8 @@ extern "C" void NTsed(const RealArray& energyArray,
     // Set up the radial bins
     Real rstart(log10(rms));
     Real rstop(log10(rout));
-    size_t rnum(1001);  // 1000 radial bins offers about dr/r of ~1% for Rin = 1 and Rout = 1e5
+    // size_t rnum(1001);  // 1000 radial bins offers about dr/r of ~1% for Rin = 1 and Rout = 1e5
+    size_t rnum(static_cast<int>(floor(100.*(rstop-rstart))));  // this offers dr/r of ~2.3% for all combinations of Rin and Rout
     Real rstep((rstop-rstart)/(rnum-1));
     RealArray redges(rnum);
     for (size_t n = 0; n < rnum; ++n){
