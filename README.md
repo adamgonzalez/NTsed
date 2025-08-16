@@ -11,7 +11,7 @@ The model has the following physically relevant variable parameters:
 1. `logMBH`: base-10 logarithm of the black hole mass in units of solar masses.
 2. `mdot`: mass accretion rate in units of the Eddington one based on the black hole mass
 3. `spin`: black hole spin parameter.
-4. `rin`: inner disc radius in units of gravitational radii. This also gives the size of the X-ray corona based on the energetic link used following Kubota & Done (2018). When set to a negative value this will be set to the innermost stable circular orbit based on the black hole spin.
+4. `rin`: inner disc radius in units of gravitational radii. This also gives the size of the X-ray corona based on the energetic link used following Kubota & Done (2018). When set to exactly 0, the code will use the innermost stable circular orbit based on the black hole spin. When set to a negative value, the code will only compute the disc emission and not include the X-ray coronal emission.
 5. `rout`: outer disc radius in units of gravitational radii.
 6. `incl`: line of sight viewing angle with respect to the disc normal in units of degrees.
 7. `fcol`: color-temperature correction factor. When set to a negative value this will use the temperature dependent scheme of Done et al. (2012).
